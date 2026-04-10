@@ -29,12 +29,6 @@ async def main() -> None:
     dp.include_router(history.router)
     dp.include_router(stats.router)
 
-    logger.info("Завершение предыдущей сессии Telegram...")
-    try:
-        await bot.log_out()
-    except Exception as e:
-        logger.warning("log_out() завершился с ошибкой (игнорируем): %s", e)
-
     logger.info("Бот запущен.")
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
