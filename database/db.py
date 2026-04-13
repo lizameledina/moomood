@@ -78,3 +78,24 @@ def get_stats_7d(user_id: int) -> Optional[sqlite3.Row]:
             FROM records
             WHERE user_id = ? AND date >= ?
         """, (user_id, since)).fetchone()
+
+
+def get_records_in_period(user_id: int, period: str) -> List[sqlite3.Row]:
+    """
+    Записи пользователя за период, по возрастанию даты.
+    period: '7' — последние 7 дней, '30' — 30 дней, '0' — всё время.
+    """
+    with _get_conn() as conn:
+        if period == "0":
+            return conn.execute("""
+                SELECT * FROM records
+                WHERE user_id = ?
+                ORDER BY date ASC
+            """, (user_id,)).fetchall()
+        days = 7 if period == "7" else 30
+        since = (date.today() - timedelta(days=days - 1)).isoformat()
+        return conn.execute("""
+            SELECT * FROM records
+            WHERE user_id = ? AND date >= ?
+            ORDER BY date ASC
+        """, (user_id, since)).fetchall()

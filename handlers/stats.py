@@ -1,50 +1,75 @@
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+import re
 
-from database.db import get_stats_7d
+from aiogram import F, Router
+from aiogram.filters import Filter
+from aiogram.types import CallbackQuery, Message
+
+from database.db import get_records_in_period
+from keyboards.keyboards import analytics_keyboard
+from utils.analytics import build_analytics_html
 
 router = Router()
 
-MOOD_LABELS = {
-    1: "😞 Очень плохо",
-    2: "🙁 Плохо",
-    3: "😐 Нормально",
-    4: "🙂 Хорошо",
-    5: "😄 Отлично",
-}
+DEFAULT_PERIOD = "7"
+DEFAULT_METRIC = "m"
+
+ANALYTICS_CB = re.compile(r"^a(7|30|0)(m|e|r|h)$")
 
 
-def _mood_label(avg: float) -> str:
-    return MOOD_LABELS.get(round(avg), f"{avg:.1f}")
+def _parse_analytics_cb(data: str) -> tuple[str, str] | None:
+    m = ANALYTICS_CB.match(data)
+    if not m:
+        return None
+    return m.group(1), m.group(2)
 
 
-def build_stats_text(user_id: int) -> str:
-    row = get_stats_7d(user_id)
-    if not row or row["count"] == 0:
-        return (
-            "📊 <b>Статистика за 7 дней</b>\n\n"
-            "Пока нет данных для статистики.\n\n"
-            "Начни с ежедневного чек-ина — и через несколько дней здесь появятся твои показатели."
-        )
-    return (
-        f"📊 <b>Статистика за 7 дней</b>\n\n"
-        f"Записей: {row['count']}\n"
-        f"Среднее настроение: {_mood_label(row['avg_mood'])}\n"
-        f"Средняя энергия: {row['avg_energy']:.1f}/10\n"
-        f"Средний стресс: {row['avg_stress']:.1f}/10\n"
-        f"Средний сон: {row['avg_sleep']:.1f} ч."
+class AnalyticsCallbackFilter(Filter):
+    async def __call__(self, callback: CallbackQuery) -> bool:
+        return _parse_analytics_cb(callback.data) is not None
+
+
+def build_analytics_message(user_id: int, period: str, metric: str) -> str:
+    rows = list(get_records_in_period(user_id, period))
+    return build_analytics_html(rows, period, metric)
+
+
+async def send_analytics_default(message: Message, user_id: int) -> None:
+    text = build_analytics_message(user_id, DEFAULT_PERIOD, DEFAULT_METRIC)
+    await message.answer(
+        text,
+        parse_mode="HTML",
+        reply_markup=analytics_keyboard(DEFAULT_PERIOD, DEFAULT_METRIC),
     )
 
 
 @router.message(F.text == "📊 Статистика")
 async def show_stats(message: Message) -> None:
-    await message.answer(build_stats_text(message.from_user.id), parse_mode="HTML")
+    await send_analytics_default(message, message.from_user.id)
 
 
 @router.callback_query(F.data == "goto_stats")
 async def goto_stats(callback: CallbackQuery) -> None:
+    text = build_analytics_message(callback.from_user.id, DEFAULT_PERIOD, DEFAULT_METRIC)
     await callback.message.edit_text(
-        build_stats_text(callback.from_user.id),
+        text,
         parse_mode="HTML",
+        reply_markup=analytics_keyboard(DEFAULT_PERIOD, DEFAULT_METRIC),
     )
     await callback.answer()
+
+
+@router.callback_query(AnalyticsCallbackFilter())
+async def analytics_change(callback: CallbackQuery) -> None:
+    parsed = _parse_analytics_cb(callback.data)
+    if not parsed:
+        await callback.answer()
+        return
+    period, metric = parsed
+    text = build_analytics_message(callback.from_user.id, period, metric)
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=analytics_keyboard(period, metric),
+    )
+    await callback.answer()
+

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -14,20 +15,30 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Меняй при правках, чтобы в логе было видно, что запущена новая версия
+MOODBOT_BUILD = "2026-04-12-ignore-mention"
+
 
 async def main() -> None:
+    root = Path(__file__).resolve().parent
+    logger.info("Сборка %s", MOODBOT_BUILD)
+    logger.info("Рабочая папка бота: %s", root)
+    logger.info("Файл bot.py: %s", Path(__file__).resolve())
+
     init_db()
     logger.info("База данных готова.")
 
     bot = Bot(token=BOT_TOKEN)
+    await bot.delete_webhook(drop_pending_updates=True)
+
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Порядок важен: checkin содержит общий cancel-хэндлер,
-    # поэтому его регистрируем раньше start и stats.
-    dp.include_router(checkin.router)
+    # Сначала общие команды и экраны (/start, история, статистика),
+    # затем сценарий чек-ина (широкие FSM-хэндлеры и cancel).
     dp.include_router(start.router)
     dp.include_router(history.router)
     dp.include_router(stats.router)
+    dp.include_router(checkin.router)
 
     logger.info("Бот запущен.")
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

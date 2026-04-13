@@ -11,6 +11,7 @@ from keyboards.keyboards import (
     skip_or_cancel_keyboard,
     tags_keyboard,
     after_checkin_keyboard,
+    main_menu_inline_keyboard,
     main_menu_keyboard,
 )
 from database.db import upsert_record
@@ -35,13 +36,17 @@ TAG_LABELS = {
 
 # ── Запуск чек-ина ──────────────────────────────────────────────────────
 
-@router.message(F.text == "📝 Заполнить запись")
-async def start_checkin(message: Message, state: FSMContext) -> None:
+async def begin_checkin(message: Message, state: FSMContext) -> None:
     await state.set_state(CheckinStates.mood)
     await message.answer(
         "Как ты себя чувствуешь прямо сейчас?",
         reply_markup=mood_keyboard(),
     )
+
+
+@router.message(F.text == "📝 Заполнить запись")
+async def start_checkin(message: Message, state: FSMContext) -> None:
+    await begin_checkin(message, state)
 
 
 # ── Шаг 1: Настроение ──────────────────────────────────────────────────
@@ -60,10 +65,22 @@ async def process_mood(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-# Пользователь написал текст вместо выбора кнопки
-@router.message(CheckinStates.mood)
-@router.message(CheckinStates.energy)
-@router.message(CheckinStates.stress)
+# Пользователь написал текст вместо выбора кнопки (/start и др. команды не перехватываем)
+@router.message(
+    CheckinStates.mood,
+    F.text,
+    ~F.text.startswith("/"),
+)
+@router.message(
+    CheckinStates.energy,
+    F.text,
+    ~F.text.startswith("/"),
+)
+@router.message(
+    CheckinStates.stress,
+    F.text,
+    ~F.text.startswith("/"),
+)
 async def prompt_use_buttons(message: Message) -> None:
     await message.answer("Пожалуйста, выбери вариант из кнопок выше 👆")
 
@@ -103,7 +120,7 @@ async def process_stress(callback: CallbackQuery, state: FSMContext) -> None:
 
 # ── Шаг 4: Сон ─────────────────────────────────────────────────────────
 
-@router.message(CheckinStates.sleep)
+@router.message(CheckinStates.sleep, F.text, ~F.text.startswith("/"))
 async def process_sleep(message: Message, state: FSMContext) -> None:
     raw = message.text.strip().replace(",", ".")
     try:
@@ -112,7 +129,8 @@ async def process_sleep(message: Message, state: FSMContext) -> None:
             raise ValueError
     except ValueError:
         await message.answer(
-            "Введи число от 0 до 24, например: 7 или 6.5"
+            "Введи число от 0 до 24, например: 7 или 6.5",
+            reply_markup=main_menu_keyboard(),
         )
         return
 
@@ -128,7 +146,7 @@ async def process_sleep(message: Message, state: FSMContext) -> None:
 
 # ── Шаг 5: Заметка ─────────────────────────────────────────────────────
 
-@router.message(CheckinStates.note)
+@router.message(CheckinStates.note, F.text, ~F.text.startswith("/"))
 async def process_note(message: Message, state: FSMContext) -> None:
     await state.update_data(note=message.text.strip())
     await state.set_state(CheckinStates.tags)
@@ -181,7 +199,7 @@ async def skip_tags(callback: CallbackQuery, state: FSMContext) -> None:
     await _save_and_confirm(callback, state, data, [])
 
 
-@router.message(CheckinStates.tags)
+@router.message(CheckinStates.tags, F.text, ~F.text.startswith("/"))
 async def prompt_use_tag_buttons(message: Message) -> None:
     await message.answer(
         "Выбери теги из кнопок выше или нажми «✔️ Готово» / «⏭ Пропустить»."
@@ -236,5 +254,12 @@ async def _save_and_confirm(
 async def cancel_checkin(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await callback.message.edit_text("Заполнение отменено.")
-    await callback.message.answer("Главное меню:", reply_markup=main_menu_keyboard())
+    await callback.message.answer(
+        "Главное меню",
+        reply_markup=main_menu_inline_keyboard(),
+    )
+    await callback.message.answer(
+        "⌨️ Кнопки у поля ввода:",
+        reply_markup=main_menu_keyboard(),
+    )
     await callback.answer()

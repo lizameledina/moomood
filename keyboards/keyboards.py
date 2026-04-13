@@ -17,7 +17,25 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton(text="📊 Статистика"),
         KeyboardButton(text="❓ Помощь"),
     )
-    return builder.as_markup(resize_keyboard=True)
+    return builder.as_markup(
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Выбери действие в меню",
+    )
+
+
+def main_menu_inline_keyboard() -> InlineKeyboardMarkup:
+    """Дублирует главное меню inline-кнопками — всегда видно под сообщением."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📝 Запись", callback_data="mm_write"),
+        InlineKeyboardButton(text="📋 История", callback_data="mm_hist"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="📊 Статистика", callback_data="mm_stat"),
+        InlineKeyboardButton(text="❓ Помощь", callback_data="mm_help"),
+    )
+    return builder.as_markup()
 
 
 MOOD_OPTIONS = [
@@ -88,4 +106,44 @@ def after_checkin_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="📊 Посмотреть статистику", callback_data="goto_stats")
     builder.button(text="🏠 Главное меню",           callback_data="goto_menu")
     builder.adjust(1)
+    return builder.as_markup()
+
+
+def analytics_keyboard(period: str, metric: str) -> InlineKeyboardMarkup:
+    """Период: 7 | 30 | 0 (всё время). Показатель: m | e | r | h."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=("✓ " if period == "7" else "") + "7 дней",
+            callback_data=f"a7{metric}",
+        ),
+        InlineKeyboardButton(
+            text=("✓ " if period == "30" else "") + "30 дней",
+            callback_data=f"a30{metric}",
+        ),
+        InlineKeyboardButton(
+            text=("✓ " if period == "0" else "") + "Всё время",
+            callback_data=f"a0{metric}",
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=("✓ " if metric == "m" else "") + "Настроение",
+            callback_data=f"a{period}m",
+        ),
+        InlineKeyboardButton(
+            text=("✓ " if metric == "e" else "") + "Энергия",
+            callback_data=f"a{period}e",
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=("✓ " if metric == "r" else "") + "Стресс",
+            callback_data=f"a{period}r",
+        ),
+        InlineKeyboardButton(
+            text=("✓ " if metric == "h" else "") + "Сон",
+            callback_data=f"a{period}h",
+        ),
+    )
     return builder.as_markup()
