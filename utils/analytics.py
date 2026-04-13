@@ -11,10 +11,10 @@ from statistics import median
 from typing import Any, List, Optional, Sequence, Tuple
 
 TAG_LABELS = {
-    "work": "💼 Работа",
-    "sport": "🏋️ Спорт",
-    "friends": "👥 Друзья",
-    "relax": "🛋️ Отдых",
+    "work": "Работа",
+    "sport": "Спорт",
+    "friends": "Друзья",
+    "relax": "Отдых",
 }
 
 MIN_RECORDS_INSIGHTS = 5
@@ -51,7 +51,7 @@ def _norm_0_1(metric: str, value: float) -> float:
 def _metric_bar(metric: str, value: float) -> str:
     filled = round(_norm_0_1(metric, value) * _BAR_WIDTH)
     filled = max(0, min(_BAR_WIDTH, filled))
-    return "█" * filled + "░" * (_BAR_WIDTH - filled)
+    return "■" * filled + "·" * (_BAR_WIDTH - filled)
 
 
 def _sparkline(values: List[float]) -> str:
@@ -137,7 +137,7 @@ def build_analytics_html(rows: List[Any], period: str, metric: str) -> str:
     metric_name = METRIC_TITLE.get(metric, metric)
 
     lines: List[str] = [
-        "📊 <b>Аналитика</b>",
+        "<b>Аналитика</b>",
         f"<i>Период: {escape(period_name)} · Показатель: {escape(metric_name)}</i>",
         "",
     ]
@@ -154,7 +154,7 @@ def build_analytics_html(rows: List[Any], period: str, metric: str) -> str:
 
 def _build_chart_section(rows: List[Any], metric: str) -> Tuple[str, str]:
     if not rows:
-        return ("📈 <b>График</b>\nПока нет записей за этот период.", "")
+        return ("<b>График</b>\nПока нет записей за этот период.", "")
 
     total = len(rows)
     chart_rows = rows[-CHART_MAX_ROWS:]
@@ -163,9 +163,9 @@ def _build_chart_section(rows: List[Any], metric: str) -> Tuple[str, str]:
     spark = _sparkline(series)
 
     lines = [
-        "📈 <b>График</b>",
+        "<b>График</b>",
         f"Среднее: <b>{escape(_fmt_value(metric, avg_value))}</b> · записей: {total}",
-        "<i>Тренд по дням</i>",
+        "<i>Динамика по дням</i>",
         f"<pre>{escape(spark)}</pre>",
     ]
     caption = _sparkline_caption(metric, series)
@@ -300,7 +300,7 @@ def _collect_relation_lines(rows: List[Any]) -> List[str]:
 
 
 def _build_relations_section(rows: List[Any]) -> str:
-    lines = ["🔗 <b>Связи</b>"]
+    lines = ["<b>Связи</b>"]
     if len(rows) < MIN_RECORDS_RELATIONS:
         lines.append("Пока данных маловато, чтобы замечать связи между показателями.")
         return "\n".join(lines)
@@ -358,7 +358,7 @@ def _insight_tag_mood(rows: List[Any]) -> Optional[str]:
 
 
 def _build_insights_section(rows: List[Any]) -> str:
-    lines = ["💡 <b>Инсайты</b>"]
+    lines = ["<b>Инсайты</b>"]
     if len(rows) < MIN_RECORDS_INSIGHTS:
         lines.append("Пока данных маловато, чтобы делать выводы.")
         return "\n".join(lines)
