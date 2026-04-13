@@ -1,8 +1,9 @@
+import os
 import sqlite3
 from datetime import date, timedelta
 from typing import List, Optional
 
-DB_PATH = "moodbot.db"
+DB_PATH = os.getenv("DB_PATH", "moodbot.db")
 
 
 def _get_conn() -> sqlite3.Connection:
