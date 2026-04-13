@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from datetime import date
 from html import escape
 from statistics import median
 from typing import Any, List, Optional, Sequence, Tuple
@@ -21,9 +20,6 @@ MIN_RECORDS_INSIGHTS = 5
 MIN_RECORDS_RELATIONS = 5
 MIN_PER_GROUP = 2
 TAG_MIN_DAYS = 2
-CHART_MAX_ROWS = 14
-_BAR_WIDTH = 10
-_SPARK_LEVELS = "▁▂▃▄▅▆▇█"
 MOOD_DIFF_NOTICE = 0.35
 STRESS_DIFF_NOTICE = 0.6
 
@@ -38,52 +34,6 @@ def _row_metric(row: Any, metric: str) -> float:
     if metric == "h":
         return float(row["sleep"])
     raise ValueError(metric)
-
-
-def _norm_0_1(metric: str, value: float) -> float:
-    if metric == "m":
-        return max(0.0, min(1.0, (value - 1.0) / 4.0))
-    if metric in ("e", "r"):
-        return max(0.0, min(1.0, (value - 1.0) / 9.0))
-    return max(0.0, min(1.0, value / 12.0))
-
-
-def _metric_bar(metric: str, value: float) -> str:
-    filled = round(_norm_0_1(metric, value) * _BAR_WIDTH)
-    filled = max(0, min(_BAR_WIDTH, filled))
-    return "■" * filled + "·" * (_BAR_WIDTH - filled)
-
-
-def _sparkline(values: List[float]) -> str:
-    if not values:
-        return ""
-    low = min(values)
-    high = max(values)
-    if high <= low:
-        return _SPARK_LEVELS[len(_SPARK_LEVELS) // 2] * len(values)
-
-    points: List[str] = []
-    top = len(_SPARK_LEVELS) - 1
-    for value in values:
-        ratio = (value - low) / (high - low)
-        points.append(_SPARK_LEVELS[min(int(ratio * top + 1e-9), top)])
-    return "".join(points)
-
-
-def _sparkline_caption(metric: str, values: List[float]) -> str:
-    if not values:
-        return ""
-    low = min(values)
-    high = max(values)
-    return f"Диапазон: {escape(_fmt_value(metric, low))} — {escape(_fmt_value(metric, high))}"
-
-
-def _short_date(value: str) -> str:
-    try:
-        dt = date.fromisoformat(value)
-        return f"{dt.day:02d}.{dt.month:02d}"
-    except ValueError:
-        return value[:5]
 
 
 def _fmt_value(metric: str, value: float) -> str:
@@ -141,51 +91,10 @@ def build_analytics_html(rows: List[Any], period: str, metric: str) -> str:
         f"<i>Период: {escape(period_name)} · Показатель: {escape(metric_name)}</i>",
         "",
     ]
-    chart_block, chart_note = _build_chart_section(rows, metric)
-    lines.append(chart_block)
-    if chart_note:
-        lines.append(chart_note)
-    lines.append("")
     lines.append(_build_relations_section(rows))
     lines.append("")
     lines.append(_build_insights_section(rows))
     return "\n".join(lines)
-
-
-def _build_chart_section(rows: List[Any], metric: str) -> Tuple[str, str]:
-    if not rows:
-        return ("<b>График</b>\nПока нет записей за этот период.", "")
-
-    total = len(rows)
-    chart_rows = rows[-CHART_MAX_ROWS:]
-    avg_value = _avg_metric(rows, metric)
-    series = [_row_metric(row, metric) for row in chart_rows]
-    spark = _sparkline(series)
-
-    lines = [
-        "<b>График</b>",
-        f"Среднее: <b>{escape(_fmt_value(metric, avg_value))}</b> · записей: {total}",
-        "<i>Динамика по дням</i>",
-        f"<pre>{escape(spark)}</pre>",
-    ]
-    caption = _sparkline_caption(metric, series)
-    if caption:
-        lines.append(f"<i>{caption}</i>")
-
-    lines.append("<pre>")
-    for row in chart_rows:
-        short_date = _short_date(row["date"])
-        metric_value = _row_metric(row, metric)
-        lines.append(f"{short_date} {_metric_bar(metric, metric_value)} {_fmt_value(metric, metric_value)}")
-    lines.append("</pre>")
-
-    note = ""
-    if total > len(chart_rows):
-        note = (
-            f"<i>Показаны последние {len(chart_rows)} дней. "
-            f"Всего записей за период: {total}.</i>"
-        )
-    return "\n".join(lines), note
 
 
 def _relation_sleep_mood(rows: List[Any]) -> Optional[str]:
