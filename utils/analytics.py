@@ -14,7 +14,30 @@ TAG_LABELS = {
     "sport": "Спорт",
     "friends": "Друзья",
     "relax": "Отдых",
+    "study": "Учёба",
+    "family": "Семья",
+    "health": "Здоровье",
+    "walk": "Прогулка",
+    "hobby": "Хобби",
+    "home": "Дом",
+    "trips": "Поездки",
+    "children": "Дети",
 }
+
+ANALYTICS_TAGS = (
+    "work",
+    "sport",
+    "friends",
+    "relax",
+    "study",
+    "family",
+    "health",
+    "walk",
+    "hobby",
+    "home",
+    "trips",
+    "children",
+)
 
 MIN_RECORDS_INSIGHTS = 5
 MIN_RECORDS_RELATIONS = 5
@@ -110,11 +133,11 @@ def _relation_sleep_mood(rows: List[Any]) -> Optional[str]:
 
     if mood_more > mood_less:
         return (
-            f"• Похоже, в дни со сном больше 7 часов настроение обычно выше "
+            f"- Похоже, в дни со сном больше 7 часов настроение обычно выше "
             f"({mood_more:.1f} против {mood_less:.1f})."
         )
     return (
-        "• Похоже, в дни со сном до 7 часов настроение было чуть выше. "
+        "- Похоже, в дни со сном до 7 часов настроение было чуть выше. "
         "Пока это выглядит как слабая закономерность."
     )
 
@@ -131,11 +154,11 @@ def _relation_stress_mood(rows: List[Any]) -> Optional[str]:
 
     if mood_low > mood_high:
         return (
-            f"• В более спокойные дни настроение чаще выше, чем в дни со стрессом от {pivot:.0f} и выше "
+            f"- В более спокойные дни настроение чаще выше, чем в дни со стрессом от {pivot:.0f} и выше "
             f"({mood_low:.1f} против {mood_high:.1f})."
         )
     return (
-        "• В более напряжённые дни настроение неожиданно оказалось чуть выше. "
+        "- В более напряжённые дни настроение неожиданно оказалось чуть выше. "
         "Пока данных недостаточно, чтобы уверенно это подтвердить."
     )
 
@@ -154,11 +177,11 @@ def _relation_tag_mood(rows: List[Any], tag: str) -> Optional[str]:
     label = escape(_tag_label(tag))
     if mood_with > mood_without:
         return (
-            f"• С тегом «{label}» настроение обычно выше, чем в дни без него "
+            f"- С тегом «{label}» настроение обычно выше, чем в дни без него "
             f"({mood_with:.1f} против {mood_without:.1f})."
         )
     return (
-        f"• С тегом «{label}» настроение чаще ниже, чем в дни без него "
+        f"- С тегом «{label}» настроение чаще ниже, чем в дни без него "
         f"({mood_with:.1f} против {mood_without:.1f})."
     )
 
@@ -177,11 +200,11 @@ def _relation_tag_stress(rows: List[Any], tag: str) -> Optional[str]:
     label = escape(_tag_label(tag))
     if stress_with > stress_without:
         return (
-            f"• В дни с тегом «{label}» стресс обычно выше, чем без него "
+            f"- В дни с тегом «{label}» стресс обычно выше, чем без него "
             f"({stress_with:.1f} против {stress_without:.1f})."
         )
     return (
-        f"• В дни с тегом «{label}» стресс чаще ниже, чем без него "
+        f"- В дни с тегом «{label}» стресс чаще ниже, чем без него "
         f"({stress_with:.1f} против {stress_without:.1f})."
     )
 
@@ -196,7 +219,7 @@ def _collect_relation_lines(rows: List[Any]) -> List[str]:
         if line:
             lines.append(line)
 
-    for tag in ("work", "sport", "friends", "relax"):
+    for tag in ANALYTICS_TAGS:
         mood_line = _relation_tag_mood(rows, tag)
         if mood_line:
             lines.append(mood_line)
@@ -230,7 +253,7 @@ def _insight_sleep_mood(rows: List[Any]) -> Optional[str]:
         return None
 
     if _avg_metric(more_sleep, "m") > _avg_metric(less_sleep, "m") + MOOD_DIFF_NOTICE:
-        return "• Похоже, когда сна больше 7 часов, настроение обычно выше."
+        return "- Похоже, когда сна больше 7 часов, настроение обычно выше."
     return None
 
 
@@ -240,29 +263,29 @@ def _insight_stress_mood(rows: List[Any]) -> Optional[str]:
         return None
 
     if _avg_metric(lower_stress, "m") > _avg_metric(higher_stress, "m") + MOOD_DIFF_NOTICE:
-        return "• Часто в более спокойные дни настроение лучше."
+        return "- Часто в более спокойные дни настроение лучше."
     return None
 
 
 def _insight_tag_stress(rows: List[Any]) -> Optional[str]:
-    for tag in ("work", "friends", "sport", "relax"):
+    for tag in ANALYTICS_TAGS:
         with_tag = [row for row in rows if tag in _parse_tags(row["tags"])]
         without_tag = [row for row in rows if tag not in _parse_tags(row["tags"])]
         if len(with_tag) < TAG_MIN_DAYS or len(without_tag) < MIN_PER_GROUP:
             continue
         if _avg_metric(with_tag, "r") > _avg_metric(without_tag, "r") + STRESS_DIFF_NOTICE:
-            return f"• Похоже, тег «{_tag_label(tag)}» часто встречается в более напряжённые дни."
+            return f"- Похоже, тег «{_tag_label(tag)}» часто встречается в более напряжённые дни."
     return None
 
 
 def _insight_tag_mood(rows: List[Any]) -> Optional[str]:
-    for tag in ("sport", "relax", "friends", "work"):
+    for tag in ANALYTICS_TAGS:
         with_tag = [row for row in rows if tag in _parse_tags(row["tags"])]
         without_tag = [row for row in rows if tag not in _parse_tags(row["tags"])]
         if len(with_tag) < TAG_MIN_DAYS or len(without_tag) < MIN_PER_GROUP:
             continue
         if _avg_metric(with_tag, "m") > _avg_metric(without_tag, "m") + MOOD_DIFF_NOTICE:
-            return f"• Обычно с тегом «{_tag_label(tag)}» настроение чуть выше."
+            return f"- Обычно с тегом «{_tag_label(tag)}» настроение чуть выше."
     return None
 
 

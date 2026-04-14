@@ -42,7 +42,7 @@ async def send_analytics_default(message: Message, user_id: int) -> None:
     )
 
 
-@router.message(F.text == "📊 Статистика")
+@router.message(F.text == "Статистика")
 async def show_stats(message: Message) -> None:
     await send_analytics_default(message, message.from_user.id)
 
@@ -72,4 +72,3 @@ async def analytics_change(callback: CallbackQuery) -> None:
         reply_markup=analytics_keyboard(period, metric),
     )
     await callback.answer()
-

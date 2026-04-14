@@ -19,18 +19,26 @@ from database.db import upsert_record
 router = Router()
 
 MOOD_LABELS = {
-    1: "😞 Очень плохо",
-    2: "🙁 Плохо",
-    3: "😐 Нормально",
-    4: "🙂 Хорошо",
-    5: "😄 Отлично",
+    1: "Очень плохо",
+    2: "Плохо",
+    3: "Нормально",
+    4: "Хорошо",
+    5: "Отлично",
 }
 
 TAG_LABELS = {
-    "work":    "💼 Работа",
-    "sport":   "🏋️ Спорт",
-    "friends": "👥 Друзья",
-    "relax":   "🛋️ Отдых",
+    "work":    "Работа",
+    "sport":   "Спорт",
+    "friends": "Друзья",
+    "relax":   "Отдых",
+    "study":   "Учёба",
+    "family":  "Семья",
+    "health":  "Здоровье",
+    "walk":    "Прогулка",
+    "hobby":   "Хобби",
+    "home":    "Дом",
+    "trips":   "Поездки",
+    "children": "Дети",
 }
 
 
@@ -44,7 +52,7 @@ async def begin_checkin(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.message(F.text == "📝 Заполнить запись")
+@router.message(F.text == "Заполнить запись")
 async def start_checkin(message: Message, state: FSMContext) -> None:
     await begin_checkin(message, state)
 
@@ -58,7 +66,7 @@ async def process_mood(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(CheckinStates.energy)
     await callback.message.edit_text(
         f"Настроение: {MOOD_LABELS[mood]}\n\n"
-        "⚡️ Как твой уровень энергии сегодня?\n"
+        "Какой у тебя уровень энергии сегодня?\n"
         "1 — совсем нет сил, 10 — на подъёме",
         reply_markup=scale_keyboard("energy"),
     )
@@ -82,7 +90,7 @@ async def process_mood(callback: CallbackQuery, state: FSMContext) -> None:
     ~F.text.startswith("/"),
 )
 async def prompt_use_buttons(message: Message) -> None:
-    await message.answer("Пожалуйста, выбери вариант из кнопок выше 👆")
+    await message.answer("Пожалуйста, выбери вариант из кнопок выше.")
 
 
 # ── Шаг 2: Энергия ─────────────────────────────────────────────────────
@@ -94,7 +102,7 @@ async def process_energy(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(CheckinStates.stress)
     await callback.message.edit_text(
         f"Энергия: {energy}/10\n\n"
-        "😤 Насколько ты был(а) в напряжении сегодня?\n"
+        "Насколько ты был(а) в напряжении сегодня?\n"
         "1 — совсем спокойно, 10 — очень много стресса",
         reply_markup=scale_keyboard("stress"),
     )
@@ -110,7 +118,7 @@ async def process_stress(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(CheckinStates.sleep)
     await callback.message.edit_text(
         f"Стресс: {stress}/10\n\n"
-        "😴 Сколько часов ты спал(а) прошлой ночью?\n"
+        "Сколько часов ты спал(а) прошлой ночью?\n"
         "Введи число, например: <b>7</b> или <b>6.5</b>",
         reply_markup=cancel_keyboard(),
         parse_mode="HTML",
@@ -138,7 +146,7 @@ async def process_sleep(message: Message, state: FSMContext) -> None:
     await state.set_state(CheckinStates.note)
     await message.answer(
         f"Сон: {sleep} ч.\n\n"
-        "📝 Хочешь добавить короткую заметку о своём дне?\n"
+        "Хочешь добавить короткую заметку о своём дне?\n"
         "Напиши что-нибудь или пропусти этот шаг.",
         reply_markup=skip_or_cancel_keyboard(),
     )
@@ -151,7 +159,7 @@ async def process_note(message: Message, state: FSMContext) -> None:
     await state.update_data(note=message.text.strip())
     await state.set_state(CheckinStates.tags)
     await message.answer(
-        "🏷 Что было в твоём дне?\n"
+        "Что было в твоём дне?\n"
         "Выбери подходящие теги или пропусти.",
         reply_markup=tags_keyboard([]),
     )
@@ -162,7 +170,7 @@ async def skip_note(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(note=None)
     await state.set_state(CheckinStates.tags)
     await callback.message.edit_text(
-        "🏷 Что было в твоём дне?\n"
+        "Что было в твоём дне?\n"
         "Выбери подходящие теги или пропусти.",
         reply_markup=tags_keyboard([]),
     )
@@ -202,7 +210,7 @@ async def skip_tags(callback: CallbackQuery, state: FSMContext) -> None:
 @router.message(CheckinStates.tags, F.text, ~F.text.startswith("/"))
 async def prompt_use_tag_buttons(message: Message) -> None:
     await message.answer(
-        "Выбери теги из кнопок выше или нажми «✔️ Готово» / «⏭ Пропустить»."
+        "Выбери теги из кнопок выше или нажми «Готово» / «Пропустить»."
     )
 
 
@@ -226,7 +234,7 @@ async def _save_and_confirm(
     await state.clear()
 
     lines = [
-        "✅ <b>Запись сохранена!</b>\n",
+        "<b>Запись сохранена.</b>\n",
         f"Настроение: {MOOD_LABELS[data['mood']]}",
         f"Энергия: {data['energy']}/10",
         f"Стресс: {data['stress']}/10",
@@ -259,7 +267,7 @@ async def cancel_checkin(callback: CallbackQuery, state: FSMContext) -> None:
         reply_markup=main_menu_inline_keyboard(),
     )
     await callback.message.answer(
-        "⌨️ Кнопки у поля ввода:",
+        "Кнопки у поля ввода:",
         reply_markup=main_menu_keyboard(),
     )
     await callback.answer()
