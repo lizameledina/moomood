@@ -23,6 +23,12 @@ async def chat_completions(
     temperature: float = 0.6,
     max_tokens: int = 250,
 ) -> str:
+    if "\n" in api_key or "\r" in api_key:
+        raise RuntimeError(
+            "DeepSeek error: invalid DEEPSEEK_API_KEY (contains newline/carriage return). "
+            "Make sure the key is a single line without extra line breaks/spaces."
+        )
+
     url = _build_chat_completions_url(base_url)
     headers = {
         "Authorization": f"Bearer {api_key}",

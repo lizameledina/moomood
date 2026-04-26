@@ -150,9 +150,16 @@ async def ai_chat(message: Message, state: FSMContext) -> None:
             DEEPSEEK_DEFAULT_BASE_URL,
             DEEPSEEK_DEFAULT_MODEL,
         )
+        reason = str(e)
+        extra = ""
+        if "Newline or carriage return character detected" in reason:
+            extra = (
+                "\n\nПохоже, в ключе есть перенос строки. "
+                "Проверь, что `DEEPSEEK_API_KEY` в `.env` записан в одну строку без лишних пробелов."
+            )
         await message.answer(
             "Не получилось получить ответ от AI.\n\n"
-            f"Техническая причина: {str(e)[:300]}",
+            f"Техническая причина: {reason[:300]}{extra}",
         )
         return
 

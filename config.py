@@ -28,8 +28,16 @@ def _read_env_value_from_file(path: Path, key: str) -> str:
     return ""
 
 
+def _sanitize_env_value(value: str) -> str:
+    value = value.strip()
+    if value.startswith(("\"", "'")) and value.endswith(("\"", "'")) and len(value) >= 2:
+        value = value[1:-1]
+    return value.strip()
+
+
 DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
 if not DEEPSEEK_API_KEY:
     DEEPSEEK_API_KEY = _read_env_value_from_file(_ENV_PATH, "DEEPSEEK_API_KEY")
+DEEPSEEK_API_KEY = _sanitize_env_value(DEEPSEEK_API_KEY)
 
 AI_DAILY_LIMIT: int = int(os.getenv("AI_DAILY_LIMIT", "20"))
