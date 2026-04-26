@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 import aiohttp
+import asyncio
 
 
 def _build_chat_completions_url(base_url: str) -> str:
@@ -35,20 +36,24 @@ async def chat_completions(
     }
 
     timeout = aiohttp.ClientTimeout(total=timeout_s)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(url, headers=headers, json=payload) as resp:
-            data: Optional[Dict[str, Any]] = None
-            try:
-                data = await resp.json()
-            except Exception:
-                text = await resp.text()
-                raise RuntimeError(f"DeepSeek HTTP {resp.status}: {text}")
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, headers=headers, json=payload) as resp:
+                data: Optional[Dict[str, Any]] = None
+                try:
+                    data = await resp.json()
+                except Exception:
+                    text = (await resp.text())[:1000]
+                    raise RuntimeError(f"DeepSeek HTTP {resp.status}: {text}")
 
-            if resp.status >= 400:
-                raise RuntimeError(f"DeepSeek HTTP {resp.status}: {data}")
+                if resp.status >= 400:
+                    raise RuntimeError(f"DeepSeek HTTP {resp.status}: {data}")
 
-            try:
-                return str(data["choices"][0]["message"]["content"]).strip()
-            except Exception:
-                raise RuntimeError(f"Unexpected DeepSeek response: {data}")
-
+                try:
+                    return str(data["choices"][0]["message"]["content"]).strip()
+                except Exception:
+                    raise RuntimeError(f"Unexpected DeepSeek response: {data}")
+    except asyncio.TimeoutError:
+        raise RuntimeError("DeepSeek error: timeout")
+    except aiohttp.ClientError as e:
+        raise RuntimeError(f"DeepSeek network error: {e.__class__.__name__}")

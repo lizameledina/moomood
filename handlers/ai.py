@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timezone
 
 from aiogram import F, Router
@@ -15,6 +16,7 @@ from states.ai_states import AiStates
 from utils.deepseek_client import chat_completions
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 DEEPSEEK_DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_DEFAULT_MODEL = "deepseek-chat"
@@ -141,9 +143,16 @@ async def ai_chat(message: Message, state: FSMContext) -> None:
             model=DEEPSEEK_DEFAULT_MODEL,
             messages=msgs,
         )
-    except Exception:
+    except Exception as e:
+        logger.exception(
+            "DeepSeek request failed (user_id=%s, base_url=%s, model=%s)",
+            message.from_user.id,
+            DEEPSEEK_DEFAULT_BASE_URL,
+            DEEPSEEK_DEFAULT_MODEL,
+        )
         await message.answer(
-            "Не получилось получить ответ от AI (временная ошибка). Попробуй ещё раз позже.",
+            "Не получилось получить ответ от AI.\n\n"
+            f"Техническая причина: {str(e)[:300]}",
         )
         return
 
