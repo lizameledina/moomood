@@ -45,11 +45,11 @@ def main_menu_inline_keyboard() -> InlineKeyboardMarkup:
 
 
 MOOD_OPTIONS = [
-    ("Очень плохо", "mood_1"),
-    ("Плохо",       "mood_2"),
-    ("Нормально",   "mood_3"),
-    ("Хорошо",      "mood_4"),
     ("Отлично",     "mood_5"),
+    ("Хорошо",      "mood_4"),
+    ("Нормально",   "mood_3"),
+    ("Плохо",       "mood_2"),
+    ("Очень плохо", "mood_1"),
 ]
 
 

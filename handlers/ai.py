@@ -8,13 +8,16 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from zoneinfo import ZoneInfo
 
-from config import AI_DAILY_LIMIT, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
+from config import AI_DAILY_LIMIT, DEEPSEEK_API_KEY
 from database.db import get_ai_usage_count, get_user_timezone, increment_ai_usage
 from keyboards.keyboards import main_menu_inline_keyboard, main_menu_keyboard
 from states.ai_states import AiStates
 from utils.deepseek_client import chat_completions
 
 router = Router()
+
+DEEPSEEK_DEFAULT_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_DEFAULT_MODEL = "deepseek-chat"
 
 SYSTEM_PROMPT = (
     "Ты — бережный компаньон для саморефлексии в дневнике настроения. "
@@ -94,10 +97,10 @@ async def menu_ai_inline(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(AiStates.chat, F.text, ~F.text.startswith("/"))
 async def ai_chat(message: Message, state: FSMContext) -> None:
-    if not DEEPSEEK_API_KEY or not DEEPSEEK_BASE_URL or not DEEPSEEK_MODEL:
+    if not DEEPSEEK_API_KEY:
         await message.answer(
             "AI пока не настроен. Нужны переменные окружения:\n"
-            "DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL",
+            "DEEPSEEK_API_KEY",
         )
         return
 
@@ -131,9 +134,9 @@ async def ai_chat(message: Message, state: FSMContext) -> None:
 
     try:
         reply = await chat_completions(
-            base_url=DEEPSEEK_BASE_URL,
+            base_url=DEEPSEEK_DEFAULT_BASE_URL,
             api_key=DEEPSEEK_API_KEY,
-            model=DEEPSEEK_MODEL,
+            model=DEEPSEEK_DEFAULT_MODEL,
             messages=msgs,
         )
     except Exception:
