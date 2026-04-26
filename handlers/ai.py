@@ -100,7 +100,9 @@ async def ai_chat(message: Message, state: FSMContext) -> None:
     if not DEEPSEEK_API_KEY:
         await message.answer(
             "AI пока не настроен. Нужны переменные окружения:\n"
-            "DEEPSEEK_API_KEY",
+            "DEEPSEEK_API_KEY\n\n"
+            "Подсказка: ключ должен быть задан в окружении процесса бота (на сервере/хостинге) "
+            "или лежать в файле .env рядом с bot.py/config.py. После изменения ключа перезапусти бота.",
         )
         return
 

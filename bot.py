@@ -5,7 +5,7 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN
+from config import BOT_TOKEN, DEEPSEEK_API_KEY
 from database.db import init_db
 from handlers import ai, start, checkin, history, stats
 
@@ -27,6 +27,7 @@ async def main() -> None:
 
     init_db()
     logger.info("База данных готова.")
+    logger.info("DeepSeek key set: %s (len=%d)", bool(DEEPSEEK_API_KEY), len(DEEPSEEK_API_KEY))
 
     bot = Bot(token=BOT_TOKEN)
     await bot.delete_webhook(drop_pending_updates=True)
