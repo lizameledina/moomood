@@ -1,10 +1,14 @@
 import re
+import asyncio
+from zoneinfo import ZoneInfo
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 
+from database.db import get_user_timezone, set_user_timezone
 from keyboards.keyboards import main_menu_inline_keyboard, main_menu_keyboard
 
 from handlers.checkin import begin_checkin
@@ -31,7 +35,15 @@ HELP_TEXT = (
     "Аналитика: связи между метриками и короткие инсайты. "
     "Период и метрику можно переключать кнопками под сообщением.\n\n"
     "Если ты заполняешь запись повторно в тот же день — "
-    "она обновится, а не создастся заново."
+    "она дополнится (можно сделать несколько чек-инов за день)."
+    "\n\n"
+    "<b>AI-поддержка</b>\n"
+    "/ai — начать разговор\n"
+    "/ai_off — выключить\n\n"
+    "<b>Часовой пояс</b>\n"
+    "Чтобы «день» считался правильно, можно настроить часовой пояс:\n"
+    "/timezone — показать текущий\n"
+    "/timezone Europe/Moscow — установить (также работает /tz)"
 )
 
 # Если CommandStart не сработал (например /start@другой_бот в группе), но текст всё ещё /start…
@@ -69,7 +81,11 @@ async def cmd_help(message: Message) -> None:
 
 @router.callback_query(F.data == "goto_menu")
 async def goto_menu(callback: CallbackQuery) -> None:
-    await callback.message.edit_reply_markup(reply_markup=None)
+    if callback.message and callback.message.reply_markup is not None:
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except TelegramBadRequest:
+            pass
     await callback.message.answer(
         "Главное меню",
         reply_markup=main_menu_inline_keyboard(),
@@ -81,9 +97,48 @@ async def goto_menu(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
+@router.message(Command("timezone"))
+@router.message(Command("tz"))
+async def cmd_timezone(message: Message) -> None:
+    text = (message.text or "").strip()
+    parts = text.split(maxsplit=1)
+
+    if len(parts) == 1:
+        tz_name = await asyncio.to_thread(get_user_timezone, message.from_user.id)
+        await message.answer(
+            f"Твой часовой пояс: <b>{tz_name}</b>\n\n"
+            "Чтобы изменить:\n"
+            "<code>/timezone Europe/Moscow</code>\n"
+            "<code>/timezone UTC</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    tz_candidate = parts[1].strip()
+    try:
+        ZoneInfo(tz_candidate)
+    except Exception:
+        await message.answer(
+            "Не понимаю такой часовой пояс.\n\n"
+            "Примеры:\n"
+            "<code>/timezone Europe/Moscow</code>\n"
+            "<code>/timezone Europe/Kyiv</code>\n"
+            "<code>/timezone Asia/Almaty</code>\n"
+            "<code>/timezone UTC</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    await asyncio.to_thread(set_user_timezone, message.from_user.id, tz_candidate)
+    await message.answer(
+        f"Готово! Часовой пояс установлен: <b>{tz_candidate}</b>.",
+        parse_mode="HTML",
+    )
+
+
 @router.callback_query(F.data == "mm_write")
 async def menu_write(callback: CallbackQuery, state: FSMContext) -> None:
-    await begin_checkin(callback.message, state)
+    await begin_checkin(callback.message, state, user_id=callback.from_user.id)
     await callback.answer()
 
 

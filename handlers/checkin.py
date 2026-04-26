@@ -1,7 +1,11 @@
 import html
+import asyncio
+from datetime import datetime, timezone
+
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
+from zoneinfo import ZoneInfo
 
 from states.states import CheckinStates
 from keyboards.keyboards import (
@@ -14,7 +18,12 @@ from keyboards.keyboards import (
     main_menu_inline_keyboard,
     main_menu_keyboard,
 )
-from database.db import upsert_record
+from database.db import (
+    add_checkin,
+    count_checkins_for_date,
+    get_user_timezone,
+    has_sleep_for_date,
+)
 
 router = Router()
 
@@ -44,7 +53,34 @@ TAG_LABELS = {
 
 # ── Запуск чек-ина ──────────────────────────────────────────────────────
 
-async def begin_checkin(message: Message, state: FSMContext) -> None:
+def _parse_int_cb(data: str, prefix: str, lo: int, hi: int) -> int | None:
+    if not data.startswith(prefix):
+        return None
+    raw = data[len(prefix):]
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    if lo <= value <= hi:
+        return value
+    return None
+
+
+async def begin_checkin(message: Message, state: FSMContext, user_id: int | None = None) -> None:
+    resolved_user_id = user_id or (message.from_user.id if message.from_user else message.chat.id)
+    tz_name = await asyncio.to_thread(get_user_timezone, resolved_user_id)
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = ZoneInfo("UTC")
+    local_date = datetime.now(timezone.utc).astimezone(tz).date().isoformat()
+    has_sleep = await asyncio.to_thread(has_sleep_for_date, resolved_user_id, local_date)
+
+    await state.update_data(
+        tz_name=tz_name,
+        local_date=local_date,
+        has_sleep_for_date=has_sleep,
+    )
     await state.set_state(CheckinStates.mood)
     await message.answer(
         "Как ты себя чувствуешь прямо сейчас?",
@@ -61,11 +97,14 @@ async def start_checkin(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(CheckinStates.mood, F.data.startswith("mood_"))
 async def process_mood(callback: CallbackQuery, state: FSMContext) -> None:
-    mood = int(callback.data.split("_")[1])
+    mood = _parse_int_cb(callback.data, "mood_", 1, 5)
+    if mood is None:
+        await callback.answer("Некорректный выбор.", show_alert=True)
+        return
     await state.update_data(mood=mood)
     await state.set_state(CheckinStates.energy)
     await callback.message.edit_text(
-        f"Настроение: {MOOD_LABELS[mood]}\n\n"
+        f"Настроение: {MOOD_LABELS.get(mood, str(mood))}\n\n"
         "Какой у тебя уровень энергии сегодня?\n"
         "1 — совсем нет сил, 10 — на подъёме",
         reply_markup=scale_keyboard("energy"),
@@ -97,7 +136,10 @@ async def prompt_use_buttons(message: Message) -> None:
 
 @router.callback_query(CheckinStates.energy, F.data.startswith("energy_"))
 async def process_energy(callback: CallbackQuery, state: FSMContext) -> None:
-    energy = int(callback.data.split("_")[1])
+    energy = _parse_int_cb(callback.data, "energy_", 1, 10)
+    if energy is None:
+        await callback.answer("Некорректный выбор.", show_alert=True)
+        return
     await state.update_data(energy=energy)
     await state.set_state(CheckinStates.stress)
     await callback.message.edit_text(
@@ -113,16 +155,29 @@ async def process_energy(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(CheckinStates.stress, F.data.startswith("stress_"))
 async def process_stress(callback: CallbackQuery, state: FSMContext) -> None:
-    stress = int(callback.data.split("_")[1])
+    stress = _parse_int_cb(callback.data, "stress_", 1, 10)
+    if stress is None:
+        await callback.answer("Некорректный выбор.", show_alert=True)
+        return
     await state.update_data(stress=stress)
-    await state.set_state(CheckinStates.sleep)
-    await callback.message.edit_text(
-        f"Стресс: {stress}/10\n\n"
-        "Сколько часов ты спал(а) прошлой ночью?\n"
-        "Введи число, например: <b>7</b> или <b>6.5</b>",
-        reply_markup=cancel_keyboard(),
-        parse_mode="HTML",
-    )
+    data = await state.get_data()
+    if data.get("has_sleep_for_date"):
+        await state.set_state(CheckinStates.note)
+        await callback.message.edit_text(
+            f"Стресс: {stress}/10\n\n"
+            "Хочешь добавить короткую заметку о своём дне?\n"
+            "Напиши что-нибудь или пропусти этот шаг.",
+            reply_markup=skip_or_cancel_keyboard(),
+        )
+    else:
+        await state.set_state(CheckinStates.sleep)
+        await callback.message.edit_text(
+            f"Стресс: {stress}/10\n\n"
+            "Сколько часов ты спал(а) прошлой ночью?\n"
+            "Введи число, например: <b>7</b> или <b>6.5</b>",
+            reply_markup=cancel_keyboard(),
+            parse_mode="HTML",
+        )
     await callback.answer()
 
 
@@ -138,7 +193,7 @@ async def process_sleep(message: Message, state: FSMContext) -> None:
     except ValueError:
         await message.answer(
             "Введи число от 0 до 24, например: 7 или 6.5",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=cancel_keyboard(),
         )
         return
 
@@ -182,6 +237,9 @@ async def skip_note(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(CheckinStates.tags, F.data.startswith("tag_"))
 async def toggle_tag(callback: CallbackQuery, state: FSMContext) -> None:
     tag = callback.data[4:]  # убираем префикс "tag_"
+    if tag not in TAG_LABELS:
+        await callback.answer("Некорректный тег.", show_alert=True)
+        return
     data = await state.get_data()
     selected: list = data.get("selected_tags", [])
 
@@ -222,24 +280,60 @@ async def _save_and_confirm(
     data: dict,
     tags: list,
 ) -> None:
-    upsert_record(
-        user_id=callback.from_user.id,
-        mood=data["mood"],
-        energy=data["energy"],
-        stress=data["stress"],
-        sleep=data["sleep"],
-        note=data.get("note"),
-        tags=",".join(tags) if tags else None,
+    required = ("mood", "energy", "stress")
+    if any(key not in data for key in required):
+        await state.clear()
+        await callback.message.edit_text(
+            "Что-то пошло не так: данные чек-ина потерялись. Начни заново.",
+        )
+        await callback.answer()
+        return
+
+    tz_name = data.get("tz_name") or await asyncio.to_thread(get_user_timezone, callback.from_user.id)
+    local_date = data.get("local_date")
+    if not local_date:
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = ZoneInfo("UTC")
+        local_date = datetime.now(timezone.utc).astimezone(tz).date().isoformat()
+
+    sleep_value = data.get("sleep")
+    if sleep_value is None and not data.get("has_sleep_for_date"):
+        await state.clear()
+        await callback.message.edit_text(
+            "Не удалось сохранить: не найдено значение сна. Попробуй заполнить запись заново.",
+        )
+        await callback.answer()
+        return
+
+    created_at_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    await asyncio.to_thread(
+        add_checkin,
+        callback.from_user.id,
+        created_at_utc,
+        local_date,
+        data["mood"],
+        data["energy"],
+        data["stress"],
+        sleep_value,
+        data.get("note"),
+        ",".join(tags) if tags else None,
     )
     await state.clear()
 
+    checkins_count = await asyncio.to_thread(count_checkins_for_date, callback.from_user.id, local_date)
+
     lines = [
-        "<b>Запись сохранена.</b>\n",
-        f"Настроение: {MOOD_LABELS[data['mood']]}",
+        "<b>Добавлено.</b>",
+        f"<i>Записей за сегодня: {checkins_count}</i>\n",
+        f"Настроение: {MOOD_LABELS.get(data['mood'], str(data['mood']))}",
         f"Энергия: {data['energy']}/10",
         f"Стресс: {data['stress']}/10",
-        f"Сон: {data['sleep']} ч.",
     ]
+    if sleep_value is not None:
+        lines.append(f"Сон: {sleep_value} ч.")
     if data.get("note"):
         lines.append(f"Заметка: {html.escape(data['note'])}")
     if tags:

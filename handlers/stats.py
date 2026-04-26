@@ -1,10 +1,11 @@
 import re
+import asyncio
 
 from aiogram import F, Router
 from aiogram.filters import Filter
 from aiogram.types import CallbackQuery, Message
 
-from database.db import get_records_in_period
+from database.db import get_daily_series, get_user_timezone
 from keyboards.keyboards import analytics_keyboard
 from utils.analytics import build_analytics_html
 
@@ -28,13 +29,14 @@ class AnalyticsCallbackFilter(Filter):
         return _parse_analytics_cb(callback.data) is not None
 
 
-def build_analytics_message(user_id: int, period: str, metric: str) -> str:
-    rows = list(get_records_in_period(user_id, period))
+async def build_analytics_message(user_id: int, period: str, metric: str) -> str:
+    tz_name = await asyncio.to_thread(get_user_timezone, user_id)
+    rows = await asyncio.to_thread(get_daily_series, user_id, tz_name, period)
     return build_analytics_html(rows, period, metric)
 
 
 async def send_analytics_default(message: Message, user_id: int) -> None:
-    text = build_analytics_message(user_id, DEFAULT_PERIOD, DEFAULT_METRIC)
+    text = await build_analytics_message(user_id, DEFAULT_PERIOD, DEFAULT_METRIC)
     await message.answer(
         text,
         parse_mode="HTML",
@@ -49,7 +51,7 @@ async def show_stats(message: Message) -> None:
 
 @router.callback_query(F.data == "goto_stats")
 async def goto_stats(callback: CallbackQuery) -> None:
-    text = build_analytics_message(callback.from_user.id, DEFAULT_PERIOD, DEFAULT_METRIC)
+    text = await build_analytics_message(callback.from_user.id, DEFAULT_PERIOD, DEFAULT_METRIC)
     await callback.message.edit_text(
         text,
         parse_mode="HTML",
@@ -65,7 +67,7 @@ async def analytics_change(callback: CallbackQuery) -> None:
         await callback.answer()
         return
     period, metric = parsed
-    text = build_analytics_message(callback.from_user.id, period, metric)
+    text = await build_analytics_message(callback.from_user.id, period, metric)
     await callback.message.edit_text(
         text,
         parse_mode="HTML",

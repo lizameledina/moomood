@@ -55,6 +55,8 @@ def _row_metric(row: Any, metric: str) -> float:
     if metric == "r":
         return float(row["stress"])
     if metric == "h":
+        if row.get("sleep") is None:
+            raise ValueError("sleep is None")
         return float(row["sleep"])
     raise ValueError(metric)
 
@@ -114,13 +116,90 @@ def build_analytics_html(rows: List[Any], period: str, metric: str) -> str:
         f"<i>Период: {escape(period_name)} · Показатель: {escape(metric_name)}</i>",
         "",
     ]
+    lines.append(_build_metric_section(rows, period, metric))
+    lines.append("")
     lines.append(_build_relations_section(rows))
     lines.append("")
     lines.append(_build_insights_section(rows))
     return "\n".join(lines)
 
 
+_SPARK = "▁▂▃▄▅▆▇█"
+
+
+def _sparkline(values: Sequence[float]) -> str:
+    if not values:
+        return ""
+    if len(values) == 1:
+        return _SPARK[-1]
+
+    v_min = min(values)
+    v_max = max(values)
+    if v_max == v_min:
+        return _SPARK[0] * len(values)
+
+    out = []
+    for v in values:
+        ratio = (v - v_min) / (v_max - v_min)
+        idx = int(round(ratio * (len(_SPARK) - 1)))
+        idx = max(0, min(len(_SPARK) - 1, idx))
+        out.append(_SPARK[idx])
+    return "".join(out)
+
+
+def _build_metric_section(rows: List[Any], period: str, metric: str) -> str:
+    title = METRIC_TITLE.get(metric, metric)
+    if not rows:
+        return "\n".join(
+            [
+                f"<b>{escape(title)}</b>",
+                "Пока нет данных для графика и сводки.",
+            ]
+        )
+
+    shown = rows
+    truncated = False
+    if period == "0" and len(rows) > 60:
+        shown = rows[-60:]
+        truncated = True
+
+    metric_rows = shown
+    if metric == "h":
+        metric_rows = [row for row in shown if row.get("sleep") is not None]
+        if not metric_rows:
+            return "\n".join(
+                [
+                    f"<b>{escape(title)}</b>",
+                    "Пока нет данных о сне для выбранного периода.",
+                ]
+            )
+
+    values = [_row_metric(row, metric) for row in metric_rows]
+    graph = _sparkline(values)
+
+    avg = sum(values) / len(values)
+    med = float(median(values))
+    v_min = min(values)
+    v_max = max(values)
+    start_date = str(metric_rows[0]["date"])
+    end_date = str(metric_rows[-1]["date"])
+
+    lines = [
+        f"<b>{escape(title)}</b>",
+        f"<code>{graph}</code>",
+        f"<i>{escape(start_date)} → {escape(end_date)}</i>",
+        f"- Дней с данными: {len(values)}",
+        f"- Среднее: {_fmt_value(metric, avg)}",
+        f"- Медиана: {_fmt_value(metric, med)}",
+        f"- Мин/макс: {_fmt_value(metric, v_min)} / {_fmt_value(metric, v_max)}",
+    ]
+    if truncated:
+        lines.append("- Показаны последние 60 точек (чтобы сообщение не было слишком длинным).")
+    return "\n".join(lines)
+
+
 def _relation_sleep_mood(rows: List[Any]) -> Optional[str]:
+    rows = [row for row in rows if row.get("sleep") is not None]
     more_sleep = [row for row in rows if float(row["sleep"]) > 7]
     less_sleep = [row for row in rows if float(row["sleep"]) <= 7]
     if len(more_sleep) < MIN_PER_GROUP or len(less_sleep) < MIN_PER_GROUP:
@@ -247,6 +326,7 @@ def _build_relations_section(rows: List[Any]) -> str:
 
 
 def _insight_sleep_mood(rows: List[Any]) -> Optional[str]:
+    rows = [row for row in rows if row.get("sleep") is not None]
     more_sleep = [row for row in rows if float(row["sleep"]) > 7]
     less_sleep = [row for row in rows if float(row["sleep"]) <= 7]
     if len(more_sleep) < MIN_PER_GROUP or len(less_sleep) < MIN_PER_GROUP:

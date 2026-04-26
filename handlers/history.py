@@ -1,8 +1,9 @@
 import html
+import asyncio
 from aiogram import Router, F
 from aiogram.types import Message
 
-from database.db import get_history
+from database.db import get_daily_history, get_user_timezone
 from keyboards.keyboards import main_menu_keyboard
 
 router = Router()
@@ -34,23 +35,30 @@ DIVIDER = "\n\n──────────────\n\n"
 
 
 def _format_entry(row) -> str:
+    mood_avg = float(row["mood"])
+    mood_round = int(round(mood_avg))
+    mood_round = max(1, min(5, mood_round))
     parts = [
         f"<b>{row['date']}</b>",
-        f"Настроение: {MOOD_LABELS.get(row['mood'], str(row['mood']))}",
-        f"Энергия: {row['energy']}/10",
-        f"Стресс: {row['stress']}/10",
-        f"Сон: {row['sleep']} ч.",
+        f"Настроение: {mood_avg:.1f}/5 (≈ {MOOD_LABELS.get(mood_round, mood_round)})",
+        f"Энергия: {float(row['energy']):.1f}/10",
+        f"Стресс: {float(row['stress']):.1f}/10",
     ]
-    if row["note"]:
-        parts.append(f"Заметка: {html.escape(row['note'])}")
-    if row["tags"]:
-        tag_names = " · ".join(TAG_LABELS.get(t, t) for t in row["tags"].split(","))
+    if row.get("sleep") is not None:
+        parts.append(f"Сон: {float(row['sleep']):.1f} ч.")
+    if row.get("count"):
+        parts.append(f"Чек-инов за день: {row['count']}")
+    if row.get("note"):
+        parts.append(f"Заметка: {html.escape(str(row['note']))}")
+    if row.get("tags"):
+        tag_names = " · ".join(TAG_LABELS.get(t, t) for t in str(row["tags"]).split(","))
         parts.append(f"Теги: {tag_names}")
     return "\n".join(parts)
 
 
 async def send_history_reply(message: Message, user_id: int) -> None:
-    rows = get_history(user_id, limit=7)
+    tz_name = await asyncio.to_thread(get_user_timezone, user_id)
+    rows = await asyncio.to_thread(get_daily_history, user_id, tz_name, 7)
     if not rows:
         await message.answer(
             "У тебя пока нет записей.\n\nНажми «Заполнить запись», чтобы начать.",

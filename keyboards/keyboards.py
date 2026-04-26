@@ -17,6 +17,9 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton(text="Статистика"),
         KeyboardButton(text="Помощь"),
     )
+    builder.row(
+        KeyboardButton(text="AI-поддержка"),
+    )
     return builder.as_markup(
         resize_keyboard=True,
         is_persistent=True,
@@ -34,6 +37,9 @@ def main_menu_inline_keyboard() -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(text="Статистика", callback_data="mm_stat"),
         InlineKeyboardButton(text="Помощь", callback_data="mm_help"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="AI-поддержка", callback_data="mm_ai"),
     )
     return builder.as_markup()
 

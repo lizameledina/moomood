@@ -7,7 +7,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
 from database.db import init_db
-from handlers import start, checkin, history, stats
+from handlers import ai, start, checkin, history, stats
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,6 +36,7 @@ async def main() -> None:
     # Сначала общие команды и экраны (/start, история, статистика),
     # затем сценарий чек-ина (широкие FSM-хэндлеры и cancel).
     dp.include_router(start.router)
+    dp.include_router(ai.router)
     dp.include_router(history.router)
     dp.include_router(stats.router)
     dp.include_router(checkin.router)
