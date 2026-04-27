@@ -9,20 +9,9 @@ from html import escape
 from statistics import median
 from typing import Any, List, Optional, Sequence, Tuple
 
-TAG_LABELS = {
-    "work": "Работа",
-    "sport": "Спорт",
-    "friends": "Друзья",
-    "relax": "Отдых",
-    "study": "Учёба",
-    "family": "Семья",
-    "health": "Здоровье",
-    "walk": "Прогулка",
-    "hobby": "Хобби",
-    "home": "Дом",
-    "trips": "Поездки",
-    "children": "Дети",
-}
+from constants import TAG_LABELS as _TAG_LABELS_DICT
+
+TAG_LABELS = _TAG_LABELS_DICT
 
 ANALYTICS_TAGS = (
     "work",

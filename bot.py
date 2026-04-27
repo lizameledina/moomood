@@ -8,6 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN, DEEPSEEK_API_KEY
 from database.db import init_db
 from handlers import ai, start, checkin, history, stats
+from utils.deepseek_client import close_session
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,7 +16,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Меняй при правках, чтобы в логе было видно, что запущена новая версия
 MOODBOT_BUILD = "2026-04-12-ignore-mention"
 
 
@@ -27,15 +27,13 @@ async def main() -> None:
 
     init_db()
     logger.info("База данных готова.")
-    logger.info("DeepSeek key set: %s (len=%d)", bool(DEEPSEEK_API_KEY), len(DEEPSEEK_API_KEY))
+    logger.info("DeepSeek key set: %s", bool(DEEPSEEK_API_KEY))
 
     bot = Bot(token=BOT_TOKEN)
     await bot.delete_webhook(drop_pending_updates=True)
 
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Сначала общие команды и экраны (/start, история, статистика),
-    # затем сценарий чек-ина (широкие FSM-хэндлеры и cancel).
     dp.include_router(start.router)
     dp.include_router(ai.router)
     dp.include_router(history.router)
@@ -43,7 +41,11 @@ async def main() -> None:
     dp.include_router(checkin.router)
 
     logger.info("Бот запущен.")
-    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    try:
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    finally:
+        await close_session()
+        await dp.storage.close()
 
 
 if __name__ == "__main__":

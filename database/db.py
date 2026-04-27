@@ -170,31 +170,6 @@ def set_user_timezone(user_id: int, tz_name: str) -> None:
         conn.commit()
 
 
-def upsert_record(
-    user_id: int,
-    record_date: str,
-    mood: int,
-    energy: int,
-    stress: int,
-    sleep: float,
-    note: Optional[str],
-    tags: Optional[str],
-) -> None:
-    with _get_conn() as conn:
-        conn.execute("""
-            INSERT INTO records (user_id, date, mood, energy, stress, sleep, note, tags)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, date) DO UPDATE SET
-                mood   = excluded.mood,
-                energy = excluded.energy,
-                stress = excluded.stress,
-                sleep  = excluded.sleep,
-                note   = excluded.note,
-                tags   = excluded.tags
-        """, (user_id, record_date, mood, energy, stress, sleep, note, tags))
-    conn.commit()
-
-
 def add_checkin(
     user_id: int,
     created_at_utc: str,
@@ -307,63 +282,17 @@ def get_ai_usage_count(user_id: int, local_date: str) -> int:
 
 def increment_ai_usage(user_id: int, local_date: str) -> int:
     with _get_conn() as conn:
-        conn.execute(
+        row = conn.execute(
             """
             INSERT INTO ai_usage (user_id, local_date, count)
             VALUES (?, ?, 1)
             ON CONFLICT(user_id, local_date) DO UPDATE SET count = ai_usage.count + 1
+            RETURNING count
             """,
             (user_id, local_date),
-        )
+        ).fetchone()
         conn.commit()
-        return get_ai_usage_count(user_id, local_date)
-
-
-def get_history(user_id: int, limit: int = 7) -> List[sqlite3.Row]:
-    with _get_conn() as conn:
-        return conn.execute("""
-            SELECT * FROM records
-            WHERE user_id = ?
-            ORDER BY date DESC
-            LIMIT ?
-        """, (user_id, limit)).fetchall()
-
-
-def get_stats_7d(user_id: int, tz_name: str | None = None) -> Optional[sqlite3.Row]:
-    base = _local_today(tz_name) if tz_name else date.today()
-    since = (base - timedelta(days=6)).isoformat()
-    with _get_conn() as conn:
-        return conn.execute("""
-            SELECT
-                COUNT(*)    AS count,
-                AVG(mood)   AS avg_mood,
-                AVG(energy) AS avg_energy,
-                AVG(stress) AS avg_stress,
-                AVG(sleep)  AS avg_sleep
-            FROM records
-            WHERE user_id = ? AND date >= ?
-        """, (user_id, since)).fetchone()
-
-
-def get_records_in_period(user_id: int, period: str, tz_name: str) -> List[sqlite3.Row]:
-    """
-    Записи пользователя за период, по возрастанию даты.
-    period: '7' — последние 7 дней, '30' — 30 дней, '0' — всё время.
-    """
-    with _get_conn() as conn:
-        if period == "0":
-            return conn.execute("""
-                SELECT * FROM records
-                WHERE user_id = ?
-                ORDER BY date ASC
-            """, (user_id,)).fetchall()
-        days = 7 if period == "7" else 30
-        since = (_local_today(tz_name) - timedelta(days=days - 1)).isoformat()
-        return conn.execute("""
-            SELECT * FROM records
-            WHERE user_id = ? AND date >= ?
-            ORDER BY date ASC
-        """, (user_id, since)).fetchall()
+        return int(row["count"])
 
 
 def _aggregate_daily(checkins: List[sqlite3.Row]) -> List[dict]:

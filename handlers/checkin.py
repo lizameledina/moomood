@@ -24,31 +24,9 @@ from database.db import (
     get_user_timezone,
     has_sleep_for_date,
 )
+from constants import MOOD_LABELS, TAG_LABELS
 
 router = Router()
-
-MOOD_LABELS = {
-    1: "Очень плохо",
-    2: "Плохо",
-    3: "Нормально",
-    4: "Хорошо",
-    5: "Отлично",
-}
-
-TAG_LABELS = {
-    "work":    "Работа",
-    "sport":   "Спорт",
-    "friends": "Друзья",
-    "relax":   "Отдых",
-    "study":   "Учёба",
-    "family":  "Семья",
-    "health":  "Здоровье",
-    "walk":    "Прогулка",
-    "hobby":   "Хобби",
-    "home":    "Дом",
-    "trips":   "Поездки",
-    "children": "Дети",
-}
 
 
 # ── Запуск чек-ина ──────────────────────────────────────────────────────

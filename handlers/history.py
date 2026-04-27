@@ -5,31 +5,9 @@ from aiogram.types import Message
 
 from database.db import get_daily_history, get_user_timezone
 from keyboards.keyboards import main_menu_keyboard
+from constants import MOOD_LABELS, TAG_LABELS
 
 router = Router()
-
-MOOD_LABELS = {
-    1: "Очень плохо",
-    2: "Плохо",
-    3: "Нормально",
-    4: "Хорошо",
-    5: "Отлично",
-}
-
-TAG_LABELS = {
-    "work":    "Работа",
-    "sport":   "Спорт",
-    "friends": "Друзья",
-    "relax":   "Отдых",
-    "study":   "Учёба",
-    "family":  "Семья",
-    "health":  "Здоровье",
-    "walk":    "Прогулка",
-    "hobby":   "Хобби",
-    "home":    "Дом",
-    "trips":   "Поездки",
-    "children": "Дети",
-}
 
 DIVIDER = "\n\n──────────────\n\n"
 
