@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 
 from aiogram import F, Router
@@ -11,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from config import AI_DAILY_LIMIT, DEEPSEEK_API_KEY
 from database.db import get_ai_usage_count, get_user_timezone, increment_ai_usage
-from keyboards.keyboards import main_menu_inline_keyboard, main_menu_keyboard
+from keyboards.keyboards import main_menu_keyboard
 from states.ai_states import AiStates
 from utils.deepseek_client import chat_completions
 
@@ -24,7 +25,9 @@ DEEPSEEK_DEFAULT_MODEL = "deepseek-chat"
 SYSTEM_PROMPT = (
     "Ты — бережный компаньон для саморефлексии в дневнике настроения. "
     "Твоя задача: поддержать и помочь прояснить состояние, но ты не психотерапевт и не врач. "
-    "Не ставь диагнозы, не дави, не давай медицинских советов. "
+    "Не ставь диагнозы, не дави, не давай медицинских советов и не обещай результатов. "
+    "Не придумывай контакты помощи и не называй телефонные номера/горячие линии. "
+    "Исключение: если пользователь пишет о риске самоповреждения или суицида и он в России — можно аккуратно упомянуть экстренный номер 112. "
     "Отвечай кратко (2–6 предложений), максимум 1 мягкий вопрос и 1 простое действие/практика (не обязательно)."
 )
 
@@ -33,7 +36,7 @@ CRISIS_HINT = (
     "Если есть риск, что ты можешь причинить себе вред, пожалуйста, обратись за помощью прямо сейчас: "
     "в экстренные службы или к близкому человеку рядом. "
     "Если ты в России — можно набрать 112 (единый номер экстренных служб). "
-    "Если ты в другой стране — скажи, где ты находишься, и я помогу найти местные контакты помощи."
+    "Если ты в другой стране — обратись в местные экстренные службы."
 )
 
 
@@ -47,24 +50,62 @@ def _looks_like_crisis(text: str) -> bool:
         "хочу умереть",
         "убить себя",
         "самоповреж",
-        "режу",
-        "порезать",
+        "режу себя",
+        "порезать себя",
         "kill myself",
         "suicide",
     )
     return any(k in t for k in keywords)
 
 
+_PHONE_CANDIDATE_RE = re.compile(r"(?:\+?\d[\d\-\s\(\)]{5,}\d)")
+
+
+def _sanitize_ai_reply(text: str) -> str:
+    """
+    Safety hardening: avoid hallucinated phone numbers / hotlines in non-crisis replies.
+    Keeps '112' when present (it's our only allowed number in Russian guidance).
+    """
+    if not text:
+        return text
+
+    raw = text.strip()
+    removed_any = False
+
+    def _replace(match: re.Match[str]) -> str:
+        nonlocal removed_any
+        candidate = match.group(0)
+        digits = re.sub(r"\D", "", candidate)
+        if digits == "112":
+            return candidate
+        if len(digits) >= 6:
+            removed_any = True
+            return ""
+        return candidate
+
+    cleaned = _PHONE_CANDIDATE_RE.sub(_replace, raw)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+    if removed_any:
+        suffix = "\n\nЕсли тебе нужна срочная помощь — обратись в экстренные службы (в России 112)."
+        if cleaned:
+            return (cleaned + suffix).strip()
+        return (
+            "Я рядом и готов(а) поддержать, но не хочу давать контакты, которые могу ошибочно придумать."
+            + suffix
+        )
+
+    return cleaned
+
+
 async def _enter_ai(message: Message, state: FSMContext) -> None:
     await state.set_state(AiStates.chat)
-    await state.update_data(
-        ai_messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-        ]
-    )
+    await state.update_data(ai_messages=[{"role": "system", "content": SYSTEM_PROMPT}])
     await message.answer(
         "AI-поддержка включена.\n\n"
         "Напиши, что происходит, и я помогу аккуратно это прояснить.\n"
+        "Важно: я не психотерапевт и не врач.\n"
         "Чтобы выйти: /ai_off",
         reply_markup=main_menu_keyboard(),
     )
@@ -89,12 +130,13 @@ async def menu_ai(message: Message, state: FSMContext) -> None:
 @router.callback_query(F.data == "mm_ai")
 async def menu_ai_inline(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
-    if callback.message:
-        try:
-            await callback.message.edit_reply_markup(reply_markup=None)
-        except TelegramBadRequest:
-            pass
-        await _enter_ai(callback.message, state)
+    if not callback.message:
+        return
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except TelegramBadRequest:
+        pass
+    await _enter_ai(callback.message, state)
 
 
 @router.message(AiStates.chat, F.text, ~F.text.startswith("/"))
@@ -125,11 +167,9 @@ async def ai_chat(message: Message, state: FSMContext) -> None:
 
     current_count = await asyncio.to_thread(get_ai_usage_count, message.from_user.id, local_date)
     if current_count >= AI_DAILY_LIMIT:
-        await message.answer(
-            "На сегодня лимит AI-ответов исчерпан. Попробуем завтра.",
-            reply_markup=main_menu_keyboard(),
-        )
+        await message.answer("На сегодня лимит AI-ответов исчерпан. Попробуем завтра.", reply_markup=main_menu_keyboard())
         return
+
     await asyncio.to_thread(increment_ai_usage, message.from_user.id, local_date)
 
     data = await state.get_data()
@@ -154,8 +194,9 @@ async def ai_chat(message: Message, state: FSMContext) -> None:
         extra = ""
         if "Newline or carriage return character detected" in reason:
             extra = (
-                "\n\nПохоже, в ключе есть перенос строки. "
-                "Проверь, что `DEEPSEEK_API_KEY` в `.env` записан в одну строку без лишних пробелов."
+                "\n\nПохоже, в HTTP заголовках/ответе обнаружен перенос строки. "
+                "Проверь, что `DEEPSEEK_API_KEY` в `.env` записан в одну строку без лишних пробелов/кавычек. "
+                "Если ключ корректный, возможно проблема в сети/прокси/антивирусе, который подменяет HTTP-ответ."
             )
         await message.answer(
             "Не получилось получить ответ от AI.\n\n"
@@ -163,9 +204,11 @@ async def ai_chat(message: Message, state: FSMContext) -> None:
         )
         return
 
+    reply = _sanitize_ai_reply(reply)
     await message.answer(reply, reply_markup=main_menu_keyboard())
 
     msgs.append({"role": "assistant", "content": reply})
     system = msgs[0:1]
     tail = msgs[1:][-20:]
     await state.update_data(ai_messages=system + tail)
+
